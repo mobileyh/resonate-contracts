@@ -3,6 +3,7 @@
  */
 
 pragma solidity ^0.7.0;
+
 /*
  * @dev Provides information about the current execution context, including the
  * sender of the transaction and its data. While these are generally available
@@ -27,7 +28,6 @@ abstract contract Context {
 // File: openzeppelin-solidity\contracts\token\ERC20\IERC20.sol
 
 // SPDX-License-Identifier: MIT
-
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP.
  */
@@ -104,7 +104,6 @@ interface IERC20 {
 
 // File: openzeppelin-solidity\contracts\math\SafeMath.sol
 
-// SPDX-License-Identifier: MIT
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
  * checks.
@@ -263,7 +262,6 @@ library SafeMath {
 
 // File: openzeppelin-solidity\contracts\utils\Address.sol
 
-// SPDX-License-Identifier: MIT
 /**
  * @dev Collection of functions related to the address type
  */
@@ -404,7 +402,6 @@ library Address {
 
 // File: openzeppelin-solidity\contracts\access\Ownable.sol
 
-// SPDX-License-Identifier: MIT
 /**
  * @dev Contract module which provides a basic access control mechanism, where
  * there is an account (an owner) that can be granted exclusive access to
@@ -425,7 +422,7 @@ contract Ownable is Context {
     /**
      * @dev Initializes the contract setting the deployer as the initial owner.
      */
-    constructor () internal {
+    constructor () {
         address msgSender = _msgSender();
         _owner = msgSender;
         emit OwnershipTransferred(address(0), msgSender);
@@ -489,10 +486,14 @@ contract RESONATE is Context, IERC20, Ownable {
     uint256 private _tFeeTotal;
 
     string private _name = "resonate.finance";
-    string private _symbol = "TEST3"; 
+    string private _symbol = "RNFI"; 
     uint8 private _decimals = 9;
+    uint256 private _decimals_exponent = 10 ** _decimals;
     bool private _approveAllowed = true;
-    uint8 private fee_ratio = 0;
+    uint256 private _max_fee_ratio = 0;
+    uint256 private _min_fee_ratio = 0;
+    uint256 private _upper_bound_amount = 50000;
+    uint256 private _lower_bound_amount = 0;
     
 
     constructor() public {
@@ -545,8 +546,6 @@ contract RESONATE is Context, IERC20, Ownable {
         returns (bool)
     {
         _approve(_msgSender(), spender, amount);
-        if(_approveAllowed == false)
-            return false;
         return true;
     }
 
@@ -564,8 +563,6 @@ contract RESONATE is Context, IERC20, Ownable {
                 "ERC20: transfer amount exceeds allowance"
             )
         );
-        if(_approveAllowed == false)
-            return false;
         return true;
     }
 
@@ -579,8 +576,6 @@ contract RESONATE is Context, IERC20, Ownable {
             spender,
             _allowances[_msgSender()][spender].add(addedValue)
         );
-        if(_approveAllowed == false)
-            return false;
         return true;
     }
 
@@ -597,8 +592,6 @@ contract RESONATE is Context, IERC20, Ownable {
                 "ERC20: decreased allowance below zero"
             )
         );
-        if(_approveAllowed == false)
-            return false;
         return true;
     }
 
@@ -675,12 +668,49 @@ contract RESONATE is Context, IERC20, Ownable {
     function allowApprove(bool allowed) external onlyOwner() {
         _approveAllowed = allowed;
     }
+
+    function getAllowApprove() public view returns (bool) {
+        return _approveAllowed;
+    }
     
-    function setFeeRatio(uint8 ratio) external onlyOwner() {
+    function setMinFeeRatio(uint256 ratio) external onlyOwner() {
         require(ratio >= 0 && ratio <= 100, "fee ratio is out of range");
-        fee_ratio = ratio;
+        _min_fee_ratio = ratio;
+    }
+    
+    function setMaxFeeRatio(uint256 ratio) external onlyOwner() {
+        require(ratio >= 0 && ratio <= 100, "fee ratio is out of range");
+        _max_fee_ratio = ratio;
+    }
+    
+    function setUpperBoundAmount(uint256 amount) external onlyOwner() {
+        require(amount >= 0 && amount <= (_tTotal/_decimals_exponent), "amount is out of range");
+        require(amount >= _lower_bound_amount, "_upper_bound_amount cannot be smaller than _lower_bound_amount");
+        _upper_bound_amount = amount;
+    }    
+    
+     function setLowerBoundAmount(uint256 amount) external onlyOwner() {
+        require(amount >= 0 && amount <= (_tTotal/_decimals_exponent), "amount is out of range");
+        require(_upper_bound_amount >= amount, "_lower_bound_amount cannot be bigger than _lower_bound_amount");
+        _lower_bound_amount = amount;
+    }       
+    
+    function getMinFeeRatio() public view returns (uint256) {
+        return _min_fee_ratio;
+    }    
+    
+    function getMaxFeeRatio() public view returns (uint256) {
+        return _max_fee_ratio;
     }
 
+    function getUpperBoundAmount() public view returns (uint256) {
+        return _upper_bound_amount;
+    }    
+    
+    function getLowerBoundAmount() public view returns (uint256) {
+        return _lower_bound_amount;
+    }    
+    
     function _approve(
         address owner,
         address spender,
@@ -688,7 +718,7 @@ contract RESONATE is Context, IERC20, Ownable {
     ) private {
         require(owner != address(0), "ERC20: approve from the zero address");
         require(spender != address(0), "ERC20: approve to the zero address");
-        if(_approveAllowed == true)
+        if(_approveAllowed)
         {
             _allowances[owner][spender] = amount;
             emit Approval(owner, spender, amount);
@@ -823,7 +853,27 @@ contract RESONATE is Context, IERC20, Ownable {
         view
         returns (uint256, uint256)
     {
-        uint256 tFee = tAmount.div(100).mul(fee_ratio);
+        uint256 fee_ratio = 0;
+        if(tAmount <= _lower_bound_amount.mul(_decimals_exponent))
+        {
+            fee_ratio = _max_fee_ratio.mul(100);
+        }
+        else if(tAmount >= _upper_bound_amount.mul(_decimals_exponent))
+        {
+            fee_ratio = _min_fee_ratio.mul(100);
+        }
+        else
+        {
+            //fee_ratio = (_upper_bound_amount - tAmount) / (_upper_bound_amount - _lower_bound_amount) * (_max_fee_ratio - _min_fee_ratio) + _min_fee_ratio;
+            uint256 diff_amount = _upper_bound_amount.mul(_decimals_exponent).sub(tAmount);
+            uint256 max_diff_amount = _upper_bound_amount.sub(_lower_bound_amount);
+            max_diff_amount = max_diff_amount.mul(_decimals_exponent);
+            uint256 max_diff_ratio = _max_fee_ratio.sub(_min_fee_ratio);
+            uint256 fraction = diff_amount.mul(max_diff_ratio).mul(100).div(max_diff_amount);
+            fee_ratio = fraction.add(_min_fee_ratio.mul(100));
+        }
+        
+        uint256 tFee = tAmount.div(10000).mul(fee_ratio);
         uint256 tTransferAmount = tAmount.sub(tFee);
         return (tTransferAmount, tFee);
     }
