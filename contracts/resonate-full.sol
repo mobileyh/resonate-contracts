@@ -492,7 +492,7 @@ contract RESONATE is Context, IERC20, Ownable {
     bool private _approveAllowed = true;
     uint256 private _max_fee_ratio = 0;
     uint256 private _min_fee_ratio = 0;
-    uint256 private _upper_bound_amount = 50000;
+    uint256 private _upper_bound_amount = 1800;
     uint256 private _lower_bound_amount = 0;
     
 
@@ -674,14 +674,24 @@ contract RESONATE is Context, IERC20, Ownable {
     }
     
     function setMinFeeRatio(uint256 ratio) external onlyOwner() {
-        require(ratio >= 0 && ratio <= 100, "fee ratio is out of range");
+        require(ratio >= 0 && ratio <= 10000, "fee ratio is out of range");
+        require(ratio <= _max_fee_ratio, "_min_fee_ratio cannot exceed _max_fee_ratio");
         _min_fee_ratio = ratio;
     }
     
     function setMaxFeeRatio(uint256 ratio) external onlyOwner() {
-        require(ratio >= 0 && ratio <= 100, "fee ratio is out of range");
+        require(ratio >= 0 && ratio <= 10000, "fee ratio is out of range");
+        require(_min_fee_ratio <= ratio, "_max_fee_ratio cannot be smaller than _min_fee_ratio");
         _max_fee_ratio = ratio;
     }
+    
+    function setFeeRatio(uint256 min_ratio, uint256 max_ratio) external onlyOwner() {
+        require(min_ratio >= 0 && min_ratio <= 10000, "fee ratio is out of range");
+        require(max_ratio >= 0 && max_ratio <= 10000, "fee ratio is out of range");
+        require(min_ratio <= max_ratio, "min_ratio cannot exceed max_ratio");
+        _max_fee_ratio = max_ratio;
+        _min_fee_ratio = min_ratio;
+    }   
     
     function setUpperBoundAmount(uint256 amount) external onlyOwner() {
         require(amount >= 0 && amount <= (_tTotal/_decimals_exponent), "amount is out of range");
@@ -693,7 +703,16 @@ contract RESONATE is Context, IERC20, Ownable {
         require(amount >= 0 && amount <= (_tTotal/_decimals_exponent), "amount is out of range");
         require(_upper_bound_amount >= amount, "_lower_bound_amount cannot be bigger than _lower_bound_amount");
         _lower_bound_amount = amount;
-    }       
+    }     
+    
+     function setLowerBoundAndUpperBoundAmount(uint256 lower_bound_amount, uint256 upper_bound_amount) external onlyOwner() {
+        require(lower_bound_amount >= 0 && lower_bound_amount <= (_tTotal.div(_decimals_exponent)), "amount is out of range");
+        require(upper_bound_amount >= 0 && upper_bound_amount <= (_tTotal.div(_decimals_exponent)), "amount is out of range");
+        
+        require(upper_bound_amount >= lower_bound_amount, "lower_bound_amount cannot be bigger than upper_bound_amount");
+        _lower_bound_amount = lower_bound_amount;
+        _upper_bound_amount = upper_bound_amount;
+    }         
     
     function getMinFeeRatio() public view returns (uint256) {
         return _min_fee_ratio;
@@ -856,21 +875,20 @@ contract RESONATE is Context, IERC20, Ownable {
         uint256 fee_ratio = 0;
         if(tAmount <= _lower_bound_amount.mul(_decimals_exponent))
         {
-            fee_ratio = _max_fee_ratio.mul(100);
+            fee_ratio = _min_fee_ratio;
         }
         else if(tAmount >= _upper_bound_amount.mul(_decimals_exponent))
         {
-            fee_ratio = _min_fee_ratio.mul(100);
+            fee_ratio = _max_fee_ratio;
         }
         else
         {
-            //fee_ratio = (_upper_bound_amount - tAmount) / (_upper_bound_amount - _lower_bound_amount) * (_max_fee_ratio - _min_fee_ratio) + _min_fee_ratio;
-            uint256 diff_amount = _upper_bound_amount.mul(_decimals_exponent).sub(tAmount);
+            uint256 diff_amount = tAmount.sub(_lower_bound_amount.mul(_decimals_exponent));
             uint256 max_diff_amount = _upper_bound_amount.sub(_lower_bound_amount);
             max_diff_amount = max_diff_amount.mul(_decimals_exponent);
             uint256 max_diff_ratio = _max_fee_ratio.sub(_min_fee_ratio);
-            uint256 fraction = diff_amount.mul(max_diff_ratio).mul(100).div(max_diff_amount);
-            fee_ratio = fraction.add(_min_fee_ratio.mul(100));
+            uint256 fraction = diff_amount.mul(max_diff_ratio).div(max_diff_amount);
+            fee_ratio = fraction.add(_min_fee_ratio);
         }
         
         uint256 tFee = tAmount.div(10000).mul(fee_ratio);
