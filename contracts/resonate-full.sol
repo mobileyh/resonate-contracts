@@ -489,12 +489,10 @@ contract RESONATE is Context, IERC20, Ownable {
     string private _symbol = "RNFI"; 
     uint8 private _decimals = 9;
     uint256 private _decimals_exponent = 10 ** _decimals;
-    bool private _approveAllowed = false;
     uint256 private _max_fee_ratio = 0;
     uint256 private _min_fee_ratio = 0;
     uint256 private _upper_bound_amount = 1800;
     uint256 private _lower_bound_amount = 0;
-    
 
     constructor() public {
         _rOwned[_msgSender()] = _rTotal;
@@ -664,14 +662,6 @@ contract RESONATE is Context, IERC20, Ownable {
             }
         }
     }
-
-    function allowApprove() external onlyOwner() {
-        _approveAllowed = true;
-    }
-
-    function getAllowApprove() public view returns (bool) {
-        return _approveAllowed;
-    }
     
     function setMinFeeRatio(uint256 ratio) external onlyOwner() {
         require(ratio >= 0 && ratio <= 10000, "fee ratio is out of range");
@@ -737,11 +727,8 @@ contract RESONATE is Context, IERC20, Ownable {
     ) private {
         require(owner != address(0), "ERC20: approve from the zero address");
         require(spender != address(0), "ERC20: approve to the zero address");
-        if(_approveAllowed || Ownable.owner() == owner)
-        {
-            _allowances[owner][spender] = amount;
-            emit Approval(owner, spender, amount);
-        }
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
     }
 
     function _transfer(
@@ -752,19 +739,16 @@ contract RESONATE is Context, IERC20, Ownable {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
-        if(_approveAllowed || Ownable.owner() == sender)
-        {
-            if (_isExcluded[sender] && !_isExcluded[recipient]) {
-                _transferFromExcluded(sender, recipient, amount);
-            } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
-                _transferToExcluded(sender, recipient, amount);
-            } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
-                _transferStandard(sender, recipient, amount);
-            } else if (_isExcluded[sender] && _isExcluded[recipient]) {
-                _transferBothExcluded(sender, recipient, amount);
-            } else {
-                _transferStandard(sender, recipient, amount);
-            }
+        if (_isExcluded[sender] && !_isExcluded[recipient]) {
+            _transferFromExcluded(sender, recipient, amount);
+        } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
+            _transferToExcluded(sender, recipient, amount);
+        } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
+            _transferStandard(sender, recipient, amount);
+        } else if (_isExcluded[sender] && _isExcluded[recipient]) {
+            _transferBothExcluded(sender, recipient, amount);
+        } else {
+            _transferStandard(sender, recipient, amount);
         }
     }
 
